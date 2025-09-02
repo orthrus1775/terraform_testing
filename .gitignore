@@ -1,0 +1,163 @@
+# .gitignore for Terraform Proxmox Project
+
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files, which are likely to contain sensitive data
+*.tfvars
+*.tfvars.json
+
+# Ignore override files as they are usually used to override resources locally
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Include override files you do wish to add to version control using negated pattern
+# !example_override.tf
+
+# Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
+*tfplan*
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc
+
+# VM inventory and generated files
+vm_inventory.csv
+*.log
+
+# SSH keys (if generated in project directory)
+*.pem
+*.ppk
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+known_hosts
+authorized_keys
+
+# Ansible sensitive files
+ansible.cfg
+hosts
+inventory
+*.hosts
+group_vars/*/vault.yml
+group_vars/*/secrets.yml
+host_vars/*/vault.yml
+host_vars/*/secrets.yml
+vault_pass.txt
+vault_password.txt
+*.vault
+*.secret
+ansible_vault_pass
+.vault_pass
+.ansible_vault
+
+# Ansible retry files
+*.retry
+
+# Ansible logs
+ansible.log
+*.ansible.log
+
+# Dynamic inventory files
+inventory.ini
+hosts.ini
+dynamic_inventory.py
+ec2.ini
+gce.ini
+
+# Ansible Galaxy dependencies
+roles/
+collections/
+.galaxy_install_info
+
+# Ansible temporary files
+.ansible/
+ansible_collections/
+tmp/
+temp/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.staging
+
+# Custom exclusions for this project
+config.local.tf
+config.local.yml
+secrets.tf
+secrets.yml
+local.yml
+local_vars.yml
+
+# Docker secrets (if using containers)
+docker-compose.override.yml
+.dockerignore
+
+# Kubernetes secrets (if deploying to k8s)
+*-secret.yaml
+*-secret.yml
+kubeconfig
+*.kubeconfig
+
+# Cloud provider specific
+# AWS
+.aws/
+credentials
+config
+
+# Azure
+.azure/
+
+# GCP
+*.json
+service-account*.json
+gcp-credentials*.json
+
+# Certificate files
+*.crt
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Database dumps and backups
+*.sql
+*.dump
+*.backup
