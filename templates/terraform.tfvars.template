@@ -1,0 +1,51 @@
+proxmox_api_url      = "https://your-proxmox-cluster:8006/api2/json"
+
+# Option 1: Use API Token (Recommended)
+proxmox_api_token_id     = "terraform@pve!terraform-token"  # Format: user@realm!tokenname
+proxmox_api_token_secret = "your-api-token-secret"
+
+# Option 2: Use Username/Password (Alternative)
+# proxmox_user     = "terraform@pve"
+# proxmox_password = "your-secure-password"
+
+proxmox_tls_insecure = false  # Set to true only if using self-signed certificates
+
+# VM Templates Configuration
+# Define your templates with their VM IDs on PVE-05
+vm_templates = {
+  kali = {
+    name = "kali-template"
+    vmid = 9001
+  }
+  ubuntu = {
+    name = "ubuntu-template" 
+    vmid = 9002
+  }
+  windows = {
+    name = "win10-template"
+    vmid = 9003
+  }
+}
+
+# Deployment Configuration
+user_count   = 100
+vms_per_user = 3
+
+# VM Distribution Strategy
+# Options: "round_robin", "template_based", "custom"
+vm_distribution_strategy = "template_based"
+
+# Template assignment per VM (when using template_based strategy)
+# This assigns templates to VMs: vm1=ubuntu, vm2=kali, vm3=windows
+vm_template_assignment = {
+  vm1 = "ubuntu"
+  vm2 = "kali" 
+  vm3 = "windows"
+}
+
+# Alternative: Custom distribution (when using custom strategy)
+# user_vm_templates = {
+#   "user001" = ["ubuntu", "ubuntu", "kali"]
+#   "user002" = ["windows", "ubuntu", "kali"]
+#   # ... define for specific users
+# }

@@ -1,0 +1,226 @@
+# main.tf
+terraform {
+  required_providers {
+    proxmox = {
+      source  = "telmate/proxmox"
+      version = "2.9.14"
+    }
+  }
+}
+
+# Configure the Proxmox Provider
+provider "proxmox" {
+  pm_api_url          = var.proxmox_api_url
+  pm_api_token_id     = var.proxmox_api_token_id
+  pm_api_token_secret = var.proxmox_api_token_secret
+  pm_tls_insecure     = true
+}
+
+# Read users from CSV file
+locals {
+  users_csv = file("${path.module}/users.csv")
+  users_list = [
+    for line in split("\n", local.users_csv) : 
+    trimspace(line) if trimspace(line) != "" && !startswith(trimspace(line), "#")
+  ]
+  
+  # Create VM configurations for each user
+  vms = flatten([
+    for idx, username in local.users_list : [
+      {
+        user     = username
+        vm_type  = "windows"
+        vm_id    = 400 + (idx * 3)
+        name     = "${username}-windows"
+        template = var.windows_template
+        cores    = 2
+        memory   = 4096
+        disk     = "30G"
+        os_type  = "win10"
+      },
+      {
+        user     = username
+        vm_type  = "ubuntu"
+        vm_id    = 401 + (idx * 3)
+        name     = "${username}-ubuntu"
+        template = var.ubuntu_template
+        cores    = 2
+        memory   = 2048
+        disk     = "20G"
+        os_type  = "ubuntu"
+      },
+      {
+        user     = username
+        vm_type  = "kali"
+        vm_id    = 402 + (idx * 3)
+        name     = "${username}-kali"
+        template = var.kali_template
+        cores    = 2
+        memory   = 2048
+        disk     = "25G"
+        os_type  = "l26"
+      }
+    ]
+  ])
+}
+
+# Create Windows VMs
+resource "proxmox_vm_qemu" "windows_vms" {
+  for_each = {
+    for vm in local.vms : "${vm.user}-${vm.vm_type}" => vm
+    if vm.vm_type == "windows"
+  }
+
+  name        = each.value.name
+  vmid        = each.value.vm_id
+  target_node = var.target_node
+  clone       = each.value.template
+  full_clone  = true
+  
+  cores    = each.value.cores
+  sockets  = 1
+  memory   = each.value.memory
+  
+  disk {
+    size    = each.value.disk
+    type    = "scsi"
+    storage = var.storage_pool
+  }
+  
+  network {
+    model  = "virtio"
+    bridge = var.network_bridge
+  }
+  
+  os_type = each.value.os_type
+  
+  # QEMU Agent Configuration
+  agent                = 1
+  qemu_os             = "win10"
+  define_connection_info = true
+  
+  tags = "user:${each.value.user},type:${each.value.vm_type},user_vm"
+  
+  lifecycle {
+    ignore_changes = [
+      network,
+    ]
+  }
+}
+
+# Create Ubuntu VMs
+resource "proxmox_vm_qemu" "ubuntu_vms" {
+  for_each = {
+    for vm in local.vms : "${vm.user}-${vm.vm_type}" => vm
+    if vm.vm_type == "ubuntu"
+  }
+
+  name        = each.value.name
+  vmid        = each.value.vm_id
+  target_node = var.target_node
+  clone       = each.value.template
+  full_clone  = true
+  
+  cores    = each.value.cores
+  sockets  = 1
+  memory   = each.value.memory
+  
+  disk {
+    size    = each.value.disk
+    type    = "scsi"
+    storage = var.storage_pool
+  }
+  
+  network {
+    model  = "virtio"
+    bridge = var.network_bridge
+  }
+  
+  os_type = each.value.os_type
+  
+  # QEMU Agent Configuration
+  agent                = 1
+  qemu_os             = "l26"
+  define_connection_info = true
+  
+  tags = "user:${each.value.user},type:${each.value.vm_type}"
+  
+  lifecycle {
+    ignore_changes = [
+      network,
+    ]
+  }
+}
+
+# Create Kali VMs
+resource "proxmox_vm_qemu" "kali_vms" {
+  for_each = {
+    for vm in local.vms : "${vm.user}-${vm.vm_type}" => vm
+    if vm.vm_type == "kali"
+  }
+
+  name        = each.value.name
+  vmid        = each.value.vm_id
+  target_node = var.target_node
+  clone       = each.value.template
+  full_clone  = true
+  
+  cores    = each.value.cores
+  sockets  = 1
+  memory   = each.value.memory
+  
+  disk {
+    size    = each.value.disk
+    type    = "scsi"
+    storage = var.storage_pool
+  }
+  
+  network {
+    model  = "virtio"
+    bridge = var.network_bridge
+  }
+  
+  os_type = each.value.os_type
+  
+  # QEMU Agent Configuration
+  agent                = 1
+  qemu_os             = "l26"
+  define_connection_info = true
+  
+  tags = "user:${each.value.user},type:${each.value.vm_type}"
+  
+  lifecycle {
+    ignore_changes = [
+      network,
+    ]
+  }
+}
+
+# Output the highest VM ID used for future reference
+output "highest_vm_id" {
+  value = max([for vm in local.vms : vm.vm_id]...)
+  description = "The highest VM ID used in this deployment"
+}
+
+output "vm_count" {
+  value = length(local.vms)
+  description = "Total number of VMs created"
+}
+
+output "user_count" {
+  value = length(local.users_list)
+  description = "Number of users processed"
+}
+
+# Output VM details with agent information
+output "vm_details" {
+  value = {
+    for vm in local.vms : vm.name => {
+      vm_id    = vm.vm_id
+      user     = vm.user
+      vm_type  = vm.vm_type
+      agent_enabled = true
+    }
+  }
+  description = "Details of all created VMs including agent status"
+}

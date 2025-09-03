@@ -1,0 +1,224 @@
+terraform {
+  required_providers {
+    proxmox = {
+      source  = "telmate/proxmox"
+      version = "~> 2.9.14"
+    }
+  }
+}
+
+# Provider configuration
+provider "proxmox" {
+  pm_api_url      = var.proxmox_api_url
+  pm_user         = var.proxmox_user
+  pm_password     = var.proxmox_password
+  pm_tls_insecure = var.proxmox_tls_insecure
+}
+
+# Variables
+variable "proxmox_api_url" {
+  description = "Proxmox API URL"
+  type        = string
+  default     = "https://your-proxmox-cluster:8006/api2/json"
+}
+
+variable "proxmox_user" {
+  description = "Proxmox user (only needed if not using API token)"
+  type        = string
+  default     = ""
+}
+
+variable "proxmox_password" {
+  description = "Proxmox password (only needed if not using API token)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "proxmox_api_token_id" {
+  description = "Proxmox API Token ID (format: user@realm!tokenname)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "proxmox_api_token_secret" {
+  description = "Proxmox API Token Secret"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "proxmox_tls_insecure" {
+  description = "Skip TLS verification"
+  type        = bool
+  default     = true
+}
+
+variable "template_name" {
+  description = "Name of the VM template"
+  type        = string
+  default     = "ubuntu-template"
+}
+
+variable "user_count" {
+  description = "Number of users"
+  type        = number
+  default     = 100
+}
+
+variable "vms_per_user" {
+  description = "Number of VMs per user"
+  type        = number
+  default     = 3
+}
+
+# Local values for cluster nodes and VM distribution
+locals {
+  proxmox_nodes = [
+    "PVE-01", "PVE-02", "PVE-03", "PVE-04", "PVE-05",
+    "PVE-06", "PVE-07", "PVE-08", "PVE-09", "PVE-10"
+  ]
+  
+  # Generate user list
+  users = [for i in range(var.user_count) : format("user%03d", i + 1)]
+  
+  # Generate VM configurations with distributed node assignment
+  vm_configs = flatten([
+    for user_idx, user in local.users : [
+      for vm_idx in range(var.vms_per_user) : {
+        user           = user
+        vm_name        = "${user}-vm${vm_idx + 1}"
+        vm_id          = (user_idx * var.vms_per_user) + vm_idx + 1000
+        target_node    = local.proxmox_nodes[(user_idx * var.vms_per_user + vm_idx) % length(local.proxmox_nodes)]
+        clone_node     = "PVE-05"  # Source node where templates are located
+      }
+    ]
+  ])
+  
+  # Create a map for easier resource creation
+  vm_map = {
+    for vm in local.vm_configs : vm.vm_name => vm
+  }
+}
+
+# First, clone templates to target nodes if they don't exist
+resource "null_resource" "clone_templates" {
+  for_each = toset(local.proxmox_nodes)
+  
+  # Skip if target node is the same as source node
+  count = each.value != "PVE-05" ? 1 : 0
+  
+  provisioner "local-exec" {
+    command = <<-EOT
+      # Check if template exists on target node, if not clone it
+      if ! pvesh get /nodes/${each.value}/qemu --output-format=json | grep -q "${var.template_name}"; then
+        echo "Cloning template ${var.template_name} to ${each.value}"
+        pvesh create /nodes/PVE-05/qemu/${var.template_name}/clone \
+          --newid=9000 \
+          --node=${each.value} \
+          --name=${var.template_name} \
+          --full=1
+        sleep 10
+      fi
+    EOT
+  }
+  
+  triggers = {
+    template_name = var.template_name
+    target_node   = each.value
+  }
+}
+
+# Create VMs
+resource "proxmox_vm_qemu" "user_vms" {
+  for_each = local.vm_map
+  
+  name        = each.value.vm_name
+  vmid        = each.value.vm_id
+  target_node = each.value.target_node
+  clone       = var.template_name
+  
+  # VM Configuration
+  cores    = 2
+  memory   = 2048
+  sockets  = 1
+  cpu      = "host"
+  numa     = false
+  hotplug  = "network,disk,usb"
+  
+  # Boot configuration
+  boot = "order=scsi0;ide2;net0"
+  
+  # Network configuration (v3+ requires network id)
+  network {
+    id     = 0
+    model  = "virtio"
+    bridge = "vmbr0"
+  }
+  
+  # Disk configuration
+  disk {
+    size         = "20G"
+    type         = "scsi"
+    storage      = "truenas05-nfs"
+    iothread     = 1
+    discard      = "on"
+  }
+  
+  # Cloud-init configuration
+  os_type                 = "cloud-init"
+  ipconfig0              = "ip=dhcp"
+  ciuser                 = each.value.user
+  cipassword             = "changeme123"  # Consider using random passwords
+  sshkeys                = file("~/.ssh/id_rsa.pub")  # Adjust path as needed
+  
+  # Lifecycle management
+  lifecycle {
+    ignore_changes = [
+      network,
+    ]
+  }
+  
+  # Tags for organization
+  tags = "${each.value.user},terraform-managed"
+  
+  # Depend on template cloning
+  depends_on = [null_resource.clone_templates]
+}
+
+# Output VM information
+output "vm_summary" {
+  value = {
+    total_vms = length(local.vm_configs)
+    users     = var.user_count
+    vms_per_user = var.vms_per_user
+    node_distribution = {
+      for node in local.proxmox_nodes : node => length([
+        for vm in local.vm_configs : vm if vm.target_node == node
+      ])
+    }
+  }
+}
+
+output "vm_details" {
+  value = {
+    for vm_name, vm in proxmox_vm_qemu.user_vms : vm_name => {
+      vm_id       = vm.vmid
+      target_node = vm.target_node
+      user        = split("-", vm_name)[0]
+      ipv4        = vm.default_ipv4_address
+    }
+  }
+}
+
+# Optional: Create a CSV file with VM details
+resource "local_file" "vm_inventory" {
+  content = <<-EOT
+User,VM_Name,VM_ID,Node,Template,IP_Address
+%{for vm_name, vm in proxmox_vm_qemu.user_vms~}
+${split("-", vm_name)[0]},${vm_name},${vm.vmid},${vm.target_node},${split(",", vm.tags)[1]},${vm.default_ipv4_address}
+%{endfor~}
+  EOT
+  filename = "${path.module}/vm_inventory.csv"
+}
