@@ -96,31 +96,31 @@ class DeploymentOrchestrator:
         )
         self.logger = logging.getLogger(__name__)
 
-def get_next_available_vm_id(self, start_id: int = 500) -> int:
-    """Query Proxmox for existing VM IDs and return next available ID"""
-    try:
-        # Query all nodes for existing VM IDs
-        existing_ids = set()
-        for node in self.nodes:
-            cmd = [
-                'pvesh', 'get', f'/nodes/{node.name}/qemu',
-                '--output-format', 'json'
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            vms = json.loads(result.stdout)
-            for vm in vms:
-                existing_ids.add(vm['vmid'])
-        
-        # Find next available ID starting from start_id
-        current_id = start_id
-        while current_id in existing_ids:
-            current_id += 1
-        
-        return current_id
-        
-    except Exception as e:
-        self.logger.warning(f"Could not query existing VM IDs: {e}")
-        return start_id
+    def get_next_available_vm_id(self, start_id: int = 500) -> int:
+        """Query Proxmox for existing VM IDs and return next available ID"""
+        try:
+            # Query all nodes for existing VM IDs
+            existing_ids = set()
+            for node in self.nodes:
+                cmd = [
+                    'pvesh', 'get', f'/nodes/{node.name}/qemu',
+                    '--output-format', 'json'
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                vms = json.loads(result.stdout)
+                for vm in vms:
+                    existing_ids.add(vm['vmid'])
+            
+            # Find next available ID starting from start_id
+            current_id = start_id
+            while current_id in existing_ids:
+                current_id += 1
+            
+            return current_id
+            
+        except Exception as e:
+            self.logger.warning(f"Could not query existing VM IDs: {e}")
+            return start_id
 
     def _load_templates(self) -> Dict[str, VMTemplate]:
         """Load VM template configurations"""
@@ -206,21 +206,21 @@ def get_next_available_vm_id(self, start_id: int = 500) -> int:
         
         return node_assignments
 
-def generate_vm_ids(self, start_id: int = None) -> Dict[str, int]:
-    """Generate unique VM IDs for deployment"""
-    if start_id is None:
-        start_id = self.get_next_available_vm_id(500)
-    
-    vm_id_map = {}
-    current_id = start_id
-    
-    for user in self.users:
-        for vm_type in self.templates.keys():
-            vm_key = f"{user.username}_{vm_type}"
-            vm_id_map[vm_key] = current_id
-            current_id += 1
-    
-    return vm_id_map
+    def generate_vm_ids(self, start_id: int = None) -> Dict[str, int]:
+        """Generate unique VM IDs for deployment"""
+        if start_id is None:
+            start_id = self.get_next_available_vm_id(500)
+        
+        vm_id_map = {}
+        current_id = start_id
+        
+        for user in self.users:
+            for vm_type in self.templates.keys():
+                vm_key = f"{user.username}_{vm_type}"
+                vm_id_map[vm_key] = current_id
+                current_id += 1
+        
+        return vm_id_map
 
     def create_terraform_configs(self, user_batch: List[User], batch_id: str) -> str:
         """Generate Terraform configuration files for a batch of users"""
