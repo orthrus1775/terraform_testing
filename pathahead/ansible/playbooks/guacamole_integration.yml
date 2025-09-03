@@ -1,0 +1,86 @@
+# ansible/playbooks/guacamole_integration.yml
+- name: Guacamole Integration
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+    
+  tasks:
+    - name: Install database connection tools
+      package:
+        name:
+          - mysql-client
+          - postgresql-client
+        state: present
+      when: ansible_os_family == "Debian"
+      
+    - name: Create Guacamole connection entries (Linux VMs)
+      uri:
+        url: "{{ guacamole.api_url }}/api/session/data/{{ guacamole.datasource }}/connections"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          Guacamole-Token: "{{ guacamole_token }}"
+        body_format: json
+        body:
+          parentIdentifier: "ROOT"
+          name: "{{ inventory_hostname }}"
+          protocol: "ssh"
+          parameters:
+            hostname: "{{ ansible_host }}"
+            port: "22"
+            username: "{{ username }}"
+            private-key: "{{ ssh_private_key | b64encode }}"
+          attributes:
+            max-connections: "2"
+            max-connections-per-user: "1"
+        status_code: 200
+      delegate_to: localhost
+      when: 
+        - ansible_os_family == "Debian"
+        - guacamole_token is defined
+        
+    - name: Create Guacamole connection entries (Windows VMs)
+      uri:
+        url: "{{ guacamole.api_url }}/api/session/data/{{ guacamole.datasource }}/connections"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          Guacamole-Token: "{{ guacamole_token }}"
+        body_format: json
+        body:
+          parentIdentifier: "ROOT"
+          name: "{{ inventory_hostname }}"
+          protocol: "rdp"
+          parameters:
+            hostname: "{{ ansible_host }}"
+            port: "3389"
+            username: "{{ username }}"
+            password: "{{ windows_password }}"
+            security: "tls"
+            ignore-cert: "true"
+          attributes:
+            max-connections: "2"
+            max-connections-per-user: "1"
+        status_code: 200
+      delegate_to: localhost
+      when: 
+        - ansible_os_family == "Windows"
+        - guacamole_token is defined
+        
+    - name: Create user permissions in Guacamole
+      uri:
+        url: "{{ guacamole.api_url }}/api/session/data/{{ guacamole.datasource }}/users/{{ username }}/permissions"
+        method: PATCH
+        headers:
+          Content-Type: "application/json"
+          Guacamole-Token: "{{ guacamole_token }}"
+        body_format: json
+        body:
+          op: "add"
+          path: "/connectionPermissions/{{ connection_id }}"
+          value: ["READ"]
+        status_code: 200
+      delegate_to: localhost
+      when: guacamole_token is defined

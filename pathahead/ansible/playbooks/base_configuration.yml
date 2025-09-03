@@ -1,0 +1,111 @@
+---
+- name: Base Configuration for All VMs
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+  
+  tasks:
+    - name: Update package cache (Ubuntu/Kali)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+      
+    - name: Update packages (Ubuntu/Kali)
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+      when: ansible_os_family == "Debian"
+      
+    - name: Install common packages (Linux)
+      package:
+        name:
+          - curl
+          - wget
+          - vim
+          - htop
+          - net-tools
+          - python3
+          - python3-pip
+          - git
+          - unzip
+          - tree
+        state: present
+      when: ansible_os_family == "Debian"
+      
+    - name: Configure SSH for security
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        line: "{{ item }}"
+        state: present
+      loop:
+        - "PasswordAuthentication no"
+        - "PermitRootLogin no"
+        - "Protocol 2"
+      notify: restart ssh
+      when: ansible_os_family == "Debian"
+      
+    - name: Create user home directories
+      file:
+        path: "/home/{{ username }}"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0755'
+      when: ansible_os_family == "Debian"
+      
+    - name: Set up user SSH directory
+      file:
+        path: "/home/{{ username }}/.ssh"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0700'
+      when: ansible_os_family == "Debian"
+      
+    - name: Configure firewall (UFW)
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+      when: ansible_os_family == "Debian"
+      
+    - name: Allow SSH through firewall
+      ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+      when: ansible_os_family == "Debian"
+      
+    - name: Set hostname
+      hostname:
+        name: "{{ inventory_hostname }}"
+      when: ansible_os_family == "Debian"
+      
+    - name: Update /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "127.0.1.1 {{ inventory_hostname }}.{{ domain_name }} {{ inventory_hostname }}"
+        state: present
+      when: ansible_os_family == "Debian"
+      
+    - name: Configure timezone
+      timezone:
+        name: "{{ timezone | default('America/New_York') }}"
+      when: ansible_os_family == "Debian"
+      
+    - name: Enable and start qemu-guest-agent
+      systemd:
+        name: qemu-guest-agent
+        enabled: yes
+        state: started
+      when: ansible_os_family == "Debian"
+
+  handlers:
+    - name: restart ssh
+      systemd:
+        name: ssh
+        state: restarted

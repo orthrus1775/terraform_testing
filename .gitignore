@@ -53,8 +53,10 @@ ansible.cfg
 hosts
 inventory
 *.hosts
+pathahead/ansible/group_vars/all.yml
 group_vars/*/vault.yml
 group_vars/*/secrets.yml
+group_vars/all.yml
 host_vars/*/vault.yml
 host_vars/*/secrets.yml
 vault_pass.txt
@@ -64,6 +66,7 @@ vault_password.txt
 ansible_vault_pass
 .vault_pass
 .ansible_vault
+all.yml
 
 # Ansible retry files
 *.retry

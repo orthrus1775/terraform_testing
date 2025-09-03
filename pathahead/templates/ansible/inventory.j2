@@ -1,0 +1,57 @@
+# Ansible inventory template
+
+all:
+  vars:
+    ansible_user: ansible
+    ansible_ssh_private_key_file: ~/.ssh/ansible_key
+    ansible_become: true
+    ansible_become_user: root
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+  children:
+    kali_vms:
+      hosts:
+        {% for vm_key, vm_info in terraform_outputs.items() %}
+        {% if 'kali' in vm_key and vm_info.value.ip_address %}
+        {{ vm_info.value.name }}:
+          ansible_host: {{ vm_info.value.ip_address }}
+          vm_id: {{ vm_info.value.vm_id }}
+          proxmox_node: {{ vm_info.value.node }}
+          vm_type: kali
+          username: {{ vm_key.split('_')[0] }}
+        {% endif %}
+        {% endfor %}
+
+    windows_vms:
+      hosts:
+        {% for vm_key, vm_info in terraform_outputs.items() %}
+        {% if 'windows' in vm_key and vm_info.value.ip_address %}
+        {{ vm_info.value.name }}:
+          ansible_host: {{ vm_info.value.ip_address }}
+          vm_id: {{ vm_info.value.vm_id }}
+          proxmox_node: {{ vm_info.value.node }}
+          vm_type: windows
+          username: {{ vm_key.split('_')[0] }}
+          ansible_connection: winrm
+          ansible_winrm_transport: ntlm
+          ansible_winrm_server_cert_validation: ignore
+        {% endif %}
+        {% endfor %}
+
+    ubuntu_vms:
+      hosts:
+        {% for vm_key, vm_info in terraform_outputs.items() %}
+        {% if 'ubuntu' in vm_key and vm_info.value.ip_address %}
+        {{ vm_info.value.name }}:
+          ansible_host: {{ vm_info.value.ip_address }}
+          vm_id: {{ vm_info.value.vm_id }}
+          proxmox_node: {{ vm_info.value.node }}
+          vm_type: ubuntu
+          username: {{ vm_key.split('_')[0] }}
+        {% endif %}
+        {% endfor %}
+
+    linux_vms:
+      children:
+        kali_vms:
+        ubuntu_vms:

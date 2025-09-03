@@ -1,0 +1,72 @@
+# ansible/playbooks/windows_configuration.yml
+- name: Windows VM Configuration
+  hosts: windows_vms
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+    
+  tasks:
+    - name: Enable RDP
+      win_regedit:
+        path: HKLM:\System\CurrentControlSet\Control\Terminal Server
+        name: fDenyTSConnections
+        data: 0
+        type: dword
+        
+    - name: Configure Windows Firewall for RDP
+      win_firewall_rule:
+        name: Remote Desktop
+        localport: 3389
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: yes
+        
+    - name: Install Chocolatey
+      win_chocolatey:
+        name: chocolatey
+        state: present
+        
+    - name: Install common applications via Chocolatey
+      win_chocolatey:
+        name:
+          - googlechrome
+          - firefox
+          - notepadplusplus
+          - 7zip
+          - putty
+          - winscp
+          - wireshark
+          - vscode
+          - git
+          - python3
+          - powershell-core
+        state: present
+        
+    - name: Create user profile directory
+      win_file:
+        path: "C:\\Users\\{{ username }}"
+        state: directory
+        
+    - name: Configure Windows Updates
+      win_updates:
+        category_names: 
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+        state: installed
+        reboot: yes
+        
+    - name: Disable Windows Defender (for lab environment)
+      win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender
+        name: DisableAntiSpyware
+        data: 1
+        type: dword
+        
+    - name: Enable Windows Remote Management
+      win_service:
+        name: WinRM
+        state: started
+        start_mode: auto

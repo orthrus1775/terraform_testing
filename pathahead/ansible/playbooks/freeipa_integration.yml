@@ -1,0 +1,73 @@
+# ansible/playbooks/freeipa_integration.yml
+- name: FreeIPA Integration
+  hosts: linux_vms
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+    
+  tasks:
+    - name: Install FreeIPA client packages
+      package:
+        name:
+          - freeipa-client
+          - sssd
+          - sssd-tools
+        state: present
+        
+    - name: Join FreeIPA domain
+      command: >
+        ipa-client-install
+        --domain={{ freeipa.domain }}
+        --realm={{ freeipa.realm }}
+        --server={{ freeipa.server }}
+        --hostname={{ inventory_hostname }}.{{ freeipa.domain }}
+        --mkhomedir
+        --unattended
+        --password={{ freeipa.admin_password }}
+        --principal=admin
+      args:
+        creates: /etc/ipa/default.conf
+        
+    - name: Configure SSSD for home directory creation
+      lineinfile:
+        path: /etc/sssd/sssd.conf
+        line: "{{ item }}"
+        state: present
+      loop:
+        - "override_homedir = /home/%u"
+        - "default_shell = /bin/bash"
+        - "fallback_homedir = /home/%u"
+      notify: restart sssd
+      
+    - name: Enable and start SSSD
+      systemd:
+        name: sssd
+        enabled: yes
+        state: started
+        
+    - name: Configure PAM for automatic home directory creation
+      lineinfile:
+        path: /etc/pam.d/common-session
+        line: "session required pam_mkhomedir.so skel=/etc/skel umask=077"
+        state: present
+        
+    - name: Add user to FreeIPA
+      ipa_user:
+        name: "{{ username }}"
+        givenname: "{{ username | title }}"
+        sn: "User"
+        mail: "{{ username }}@{{ freeipa.domain }}"
+        password: "{{ freeipa.default_password }}"
+        state: present
+        ipa_host: "{{ freeipa.server }}"
+        ipa_user: admin
+        ipa_pass: "{{ freeipa.admin_password }}"
+      delegate_to: localhost
+      run_once: true
+      
+  handlers:
+    - name: restart sssd
+      systemd:
+        name: sssd
+        state: restarted

@@ -1,0 +1,66 @@
+# ansible/playbooks/netbox_integration.yml
+- name: NetBox Integration  
+  hosts: all
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+    
+  tasks:
+    - name: Create device in NetBox
+      uri:
+        url: "{{ netbox.api_url }}dcim/devices/"
+        method: POST
+        headers:
+          Authorization: "Token {{ netbox.api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ inventory_hostname }}"
+          device_type: "{{ vm_type | title }} VM"
+          device_role: "lab-vm"
+          site: "lab-site"
+          platform: "{{ vm_type }}"
+          status: "active"
+          tags:
+            - "user:{{ username }}"
+            - "type:{{ vm_type }}"
+            - "managed"
+        status_code: [200, 201]
+      delegate_to: localhost
+      register: netbox_device
+      
+    - name: Create IP address in NetBox
+      uri:
+        url: "{{ netbox.api_url }}ipam/ip-addresses/"
+        method: POST
+        headers:
+          Authorization: "Token {{ netbox.api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          address: "{{ ansible_host }}/24"
+          assigned_object_type: "dcim.device"
+          assigned_object_id: "{{ netbox_device.json.id }}"
+          status: "active"
+          description: "{{ inventory_hostname }} primary IP"
+        status_code: [200, 201]
+      delegate_to: localhost
+      when: netbox_device.json.id is defined
+      
+    - name: Add custom fields to NetBox device
+      uri:
+        url: "{{ netbox.api_url }}dcim/devices/{{ netbox_device.json.id }}/"
+        method: PATCH
+        headers:
+          Authorization: "Token {{ netbox.api_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          custom_fields:
+            vm_id: "{{ vm_id }}"
+            proxmox_node: "{{ proxmox_node }}"
+            username: "{{ username }}"
+            deployment_date: "{{ ansible_date_time.iso8601 }}"
+        status_code: 200
+      delegate_to: localhost
+      when: netbox_device.json.id is defined

@@ -1,0 +1,30 @@
+# VM Information
+{% for user in users %}
+{% for vm_type in vm_templates.keys() %}
+{% set vm_key = user.username + "_" + vm_type %}
+output "{{ vm_key }}_info" {
+  description = "VM information for {{ user.username }} {{ vm_type }}"
+  value = {
+    vm_id       = proxmox_vm_qemu.{{ vm_key }}.vmid
+    name        = proxmox_vm_qemu.{{ vm_key }}.name
+    node        = proxmox_vm_qemu.{{ vm_key }}.target_node
+    ip_address  = proxmox_vm_qemu.{{ vm_key }}.default_ipv4_address
+    mac_address = proxmox_vm_qemu.{{ vm_key }}.network[0].macaddr
+    status      = "deployed"
+  }
+}
+
+{% endfor %}
+{% endfor %}
+
+# Summary outputs
+output "deployment_summary" {
+  description = "Deployment summary"
+  value = {
+    batch_id    = "{{ batch_id }}"
+    total_vms   = {{ users | length * vm_templates | length }}
+    users       = [{% for user in users %}"{{ user.username }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+    vm_types    = [{% for vm_type in vm_templates.keys() %}"{{ vm_type }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+    timestamp   = timestamp()
+  }
+}

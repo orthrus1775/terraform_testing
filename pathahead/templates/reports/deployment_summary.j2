@@ -1,0 +1,43 @@
+# Deployment Summary Report
+
+# VM Deployment Summary Report
+**Generated:** {{ timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+
+## Deployment Overview
+- **Total Users:** {{ total_users }}
+- **Total Batches:** {{ total_batches }}
+- **Successful Batches:** {{ successful_batches }}
+- **Failed Batches:** {{ failed_batches }}
+- **Success Rate:** {{ "%.1f"|format((successful_batches / total_batches * 100)) }}%
+
+## Batch Results
+{% for batch_id, success in batch_results.items() %}
+- **{{ batch_id }}:** {{ "✓ SUCCESS" if success else "✗ FAILED" }}
+{% endfor %}
+
+## Resource Allocation
+- **Total VMs Deployed:** {{ total_users * 3 }}
+  - Kali Linux VMs: {{ total_users }}
+  - Windows VMs: {{ total_users }}
+  - Ubuntu VMs: {{ total_users }}
+
+## Next Steps
+{% if failed_batches > 0 %}
+### Failed Batches Recovery
+1. Review deployment logs for failed batches
+2. Check Proxmox node resources and connectivity
+3. Verify template availability on PVE-05
+4. Re-run failed batches individually
+
+### Manual Verification Required
+- Test VM connectivity for deployed batches
+- Verify service integration (Guacamole, NetBox, FreeIPA)
+- Validate user access credentials
+{% else %}
+### Post-Deployment Tasks
+1. Verify all VMs are accessible via Guacamole
+2. Confirm NetBox documentation is complete
+3. Test FreeIPA domain integration
+4. Distribute user access credentials
+5. Conduct user training sessions
+{% endif %}

@@ -1,0 +1,48 @@
+hostname: ${hostname}
+fqdn: ${hostname}.your-domain.com
+
+users:
+  - name: cpt_user
+    groups: sudo
+    shell: /bin/bash
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    passwd: {{ '$6$rounds=4096$' + (vm_type == 'ubuntu' and 'GoCyber2026!!' or 'GoCyber2024!!') | password_hash('sha512') }}
+    lock_passwd: false
+    ssh_authorized_keys:
+%{ for key in ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+  - name: ansible
+    groups: sudo
+    shell: /bin/bash
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    ssh_authorized_keys:
+%{ for key in ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - vim
+  - htop
+  - net-tools
+  - python3
+  - python3-pip
+
+package_update: true
+package_upgrade: true
+
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  - systemctl enable ssh
+  - systemctl start ssh
+
+# Set timezone
+timezone: America/New_York
+
+# Configure SSH
+ssh_pwauth: false
+ssh_authorized_keys_file: /home/%i/.ssh/authorized_keys

@@ -1,0 +1,74 @@
+# ansible/playbooks/kali_specific.yml
+- name: Kali Linux Specific Configuration
+  hosts: kali_vms
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+    
+  tasks:
+    - name: Install Kali Linux tools
+      apt:
+        name:
+          - kali-linux-core
+          - exploitdb
+          - metasploit-framework
+          - nmap
+          - wireshark
+          - burpsuite
+          - sqlmap
+          - nikto
+          - gobuster
+          - hydra
+          - john
+          - hashcat
+          - aircrack-ng
+          - social-engineer-toolkit
+        state: present
+        
+    - name: Install additional penetration testing tools
+      apt:
+        name:
+          - ffuf
+          - feroxbuster
+          - seclists
+          - wordlists
+          - wfuzz
+          - dirb
+          - enum4linux
+          - smbclient
+          - crackmapexec
+          - bloodhound
+          - neo4j
+        state: present
+        
+    - name: Configure Metasploit database
+      command: msfdb init
+      become_user: "{{ username }}"
+      args:
+        creates: /home/{{ username }}/.msf4/database.yml
+        
+    - name: Allow common pentesting ports through firewall
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - '4444'  # Metasploit
+        - '4445'  # Metasploit
+        - '8080'  # Web proxy
+        - '8443'  # HTTPS proxy
+        
+    - name: Create pentesting directories
+      file:
+        path: "/home/{{ username }}/{{ item }}"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0755'
+      loop:
+        - 'tools'
+        - 'wordlists'
+        - 'scripts'
+        - 'reports'
+        - 'evidence'

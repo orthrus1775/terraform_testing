@@ -1,0 +1,128 @@
+# templates/terraform/main.tf.j2
+# Terraform main configuration template
+
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    proxmox = {
+      source  = "telmate/proxmox"
+      version = "3.0.2-rc04"
+    }
+  }
+}
+
+provider "proxmox" {
+  pm_api_url      = var.proxmox_api_url
+  pm_api_token_id = var.proxmox_api_token_id
+  pm_api_token_secret = var.proxmox_api_token_secret
+  pm_tls_insecure = var.proxmox_tls_insecure
+  pm_parallel     = var.proxmox_parallel
+  pm_timeout      = var.proxmox_timeout
+}
+
+# Data sources for templates
+{% for template_name, template in vm_templates.items() %}
+data "proxmox_virtual_environment_vm" "{{ template_name }}_template" {
+  node_name = "{{ proxmox_config.template_node }}"
+  vm_id     = {{ template.vm_id }}
+}
+{% endfor %}
+
+# VM Resources
+{% for user in users %}
+{% for vm_type, node in user.vm_assignments.items() %}
+{% set vm_key = user.username + "_" + vm_type %}
+{% set template = vm_templates[vm_type] %}
+resource "proxmox_vm_qemu" "{{ vm_key }}" {
+  name        = "{{ user.username }}-{{ vm_type }}"
+  target_node = "{{ node }}"
+  vmid        = {{ vm_ids[vm_key] }}
+  
+  # Template cloning
+  clone      = "{{ template.name }}"
+  full_clone = true
+  
+  # VM Configuration
+  cores    = {{ template.cpu_cores }}
+  sockets  = 1
+  memory   = {{ template.memory_mb }}
+  
+  # Boot configuration
+  boot     = "order=scsi0;ide2;net0"
+  agent    = 1
+  
+  # Network configuration
+  network {
+    model  = "virtio"
+    bridge = "vnet_1000"
+    tag    = 1000
+  }
+  
+  # Disk configuration
+  disk {
+    type     = "scsi"
+    storage  = "local-lvm"
+    size     = "{{ template.disk_size_gb }}G"
+    format   = "raw"
+    backup   = true
+    replicate = true
+  }
+  
+  # Cloud-init configuration
+  {% if template.os_type == 'linux' %}
+  os_type   = "cloud-init"
+  cicustom  = "user=local:snippets/user-data-{{ user.username }}-{{ vm_type }}.yml"
+  ipconfig0 = "ip=dhcp"
+  {% endif %}
+  
+  # Lifecycle management
+  lifecycle {
+    ignore_changes = [
+      network,
+      desc,
+      numa,
+      tablet,
+      template,
+    ]
+  }
+  
+  # Dependencies
+  depends_on = [
+    proxmox_cloud_init_disk.{{ vm_key }}_cloud_init
+  ]
+  
+  tags = "user:{{ user.username }},type:{{ vm_type }},batch:{{ batch_id }}"
+}
+
+# Cloud-init disk for Linux VMs
+{% if template.os_type == 'linux' %}
+resource "proxmox_cloud_init_disk" "{{ vm_key }}_cloud_init" {
+  name     = "{{ user.username }}-{{ vm_type }}-cloud-init"
+  pve_node = "{{ node }}"
+  storage  = "local-lvm"
+  
+  meta_data = yamlencode({
+    instance_id    = "{{ vm_key }}"
+    local-hostname = "{{ user.username }}-{{ vm_type }}"
+  })
+  
+  user_data = templatefile("${path.module}/cloud-init/user-data.yml", {
+    username = "{{ user.username }}"
+    ssh_keys = var.ssh_public_keys
+    hostname = "{{ user.username }}-{{ vm_type }}"
+  })
+  
+  network_config = yamlencode({
+    version = 2
+    ethernets = {
+      eth0 = {
+        dhcp4 = true
+        dhcp6 = false
+      }
+    }
+  })
+}
+{% endif %}
+
+{% endfor %}
+{% endfor %}

@@ -1,0 +1,86 @@
+# ansible/playbooks/ubuntu_configuration.yml  
+- name: Ubuntu Specific Configuration
+  hosts: ubuntu_vms
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - ../group_vars/all.yml
+    
+  tasks:
+    - name: Install Ubuntu development tools
+      apt:
+        name:
+          - build-essential
+          - gcc
+          - g++
+          - make
+          - cmake
+          - nodejs
+          - npm
+          - docker.io
+          - docker-compose
+          - apache2
+          - nginx
+          - mysql-server
+          - postgresql
+          - redis-server
+          - mongodb
+        state: present
+        
+    - name: Install programming languages
+      apt:
+        name:
+          - python3-dev
+          - python3-venv
+          - python3-pip
+          - openjdk-11-jdk
+          - golang-go
+          - ruby
+          - ruby-dev
+          - php
+          - php-cli
+          - php-fpm
+        state: present
+        
+    - name: Add user to docker group
+      user:
+        name: "{{ username }}"
+        groups: docker
+        append: yes
+        
+    - name: Start and enable services
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - docker
+        - apache2
+        - mysql
+        - postgresql
+        - redis-server
+        
+    - name: Allow web ports through firewall
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - '80'   # HTTP
+        - '443'  # HTTPS
+        - '3000' # Development
+        - '8000' # Development
+        - '8080' # Development
+        
+    - name: Create development directories
+      file:
+        path: "/home/{{ username }}/{{ item }}"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0755'
+      loop:
+        - 'projects'
+        - 'web'
+        - 'scripts'
+        - 'docker'
