@@ -1,0 +1,30 @@
+---
+- name: Assign permissions
+  hosts: localhost
+  gather_facts: false
+  vars:
+    template_names:
+      - kali-2402-template
+      - win10-cpt-template
+    vm_names: 
+      - "-kali-2402-vm-01"
+      - "-win10-cpt-vm-01"
+
+  tasks:
+    - name: Read users from CSV file
+      read_csv:
+        path: users.csv
+      register: users_csv
+
+    - name: Combine variables for VM creation loop
+      set_fact:
+        vm_template_pairs: "{{ vm_template_pairs | default([]) + [{'vm_name': vm_names[item], 'template_name': template_names[item]}] }}"
+      loop: "{{ range(0, vm_names | length) }}"
+      loop_control:
+        loop_var: item
+
+    - name: Loop over users
+      include_tasks: create_vm_for_user.yml
+      loop: "{{ users_csv.list }}"
+      loop_control:
+        loop_var: user

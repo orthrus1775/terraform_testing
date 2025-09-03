@@ -1,0 +1,131 @@
+- name: Create virtual machines
+  community.vmware.vmware_content_deploy_template:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    folder: "users/{{ user.username }}"
+    name: "{{ user.username }}{{ vm_pair.vm_name }}"
+    datacenter: 176th-CPT
+    cluster: 176th-CPT-cluster
+    datastore_cluster: 176th-DatastoreCluster
+    library: 176th-content-library
+    template: "{{ vm_pair.template_name }}"
+    state: present
+    validate_certs: false
+  delegate_to: localhost
+
+- name: Update VM with proper settings
+  community.vmware.vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: false
+    name: "{{ user.username }}{{ vm_pair.vm_name }}"
+    hardware:
+      memory_mb: 16384
+      num_cpus: 4
+    datacenter: 176th-CPT
+    cluster: 176th-CPT-cluster
+    networks:
+    - name: "USERS_1000"
+      connected: true
+      start_connected: true
+    - name: "VM Network"
+      connected: true
+      start_connected: true
+
+- name: Add tags to the virtual machine
+  community.vmware.vmware_tag_manager:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: false
+    tag_names:
+      - "{{ user.tag }}"
+    object_name: "{{ user.username }}{{ vm_pair.vm_name }}"
+    object_type: VirtualMachine
+    state: add
+  delegate_to: localhost
+
+- name: Get VM info
+  community.vmware.vmware_vm_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: false
+    vm_name: "{{ user.username }}{{ vm_pair.vm_name }}"
+  delegate_to: localhost
+  register: vm_info_result
+
+- name: Extract MAC addresses
+  set_fact:
+    mac_address_1: "{{ vm_info_result.virtual_machines[0].mac_address[0] }}"
+  when: vm_info_result.virtual_machines | length > 0
+
+- name: get first available IP address
+  netbox.netbox.netbox_ip_address:
+    netbox_url: "{{ netbox_url }}"
+    netbox_token: "{{ netbox_token }}"
+    data:
+      prefix: 192.168.0.0/20
+    state: new
+  register: ip_address
+
+- name: Set fact for new IP address
+  set_fact:
+    new_ip: "{{ ip_address.ip_address.address | split('/') | first }}"
+
+- name: write to pfSense
+  uri:
+    url: "{{ pfsense2_url }}"
+    method: POST
+    headers:
+      Content-Type: application/json
+      Authorization: "{{ pfsense2_auth }}"
+    body_format: json
+    body:
+      cid: "{{ user.username }}{{ vm_pair.vm_name }}"
+      descr: "{{ user.username }}{{ vm_pair.vm_name }}"
+      hostname: "{{ user.username | replace('.', '-') }}{{ vm_pair.vm_name }}"
+      interface: "USERS_1000"
+      ipaddr: "{{ new_ip }}"
+      mac: "{{ mac_address_1 }}"
+  when: vm_info_result.virtual_machines | length > 0
+
+- name: Power On VM
+  community.vmware.vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: false
+    name: "{{ user.username }}{{ vm_pair.vm_name }}"
+    state: "poweredon"
+
+- name: add new RDP conn
+  scicore.guacamole.guacamole_connection:
+    base_url: "{{ guac_url }}"
+    auth_username: "{{ guac_username }}"
+    auth_password: "{{ guac_password }}"
+    connection_name: "{{ user.username }}{{ vm_pair.vm_name }}"
+    group_name: "{{ 'Windows' if 'win10' in vm_pair.vm_name else 'Linux' }}"
+    protocol: rdp
+    hostname: "{{ new_ip }}"
+    port: "{{ 3389 if 'win10' in vm_pair.vm_name else 3390 }}"
+    username: cpt_user # Did not omit due to being in documentation already
+    password: GoCyber2024!!
+    rdp_width: 1920
+    rdp_height: 1080
+    rdp_ignore_server_certs: true
+    rdp_enable_drive: true
+    rdp_drive_name: RDPDRIVE
+    rdp_drive_path: /drive
+  #register: _connection_info
+
+# - name: assign user permissions to connection
+#   scicore.guacamole.guacamole_user:
+#     base_url: "{{ guac_url }}"
+#     auth_username: "{{ guac_username }}"
+#     auth_password: "{{ guac_password }}"
+#     username: "{{ user.username }}"
+#     allowed_connections:
+#       - "{{ user.username }}{{ vm_pair.vm_name }}"

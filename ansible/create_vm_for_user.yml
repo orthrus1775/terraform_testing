@@ -1,0 +1,79 @@
+
+- name: Create IPA User
+  community.general.ipa_user:
+    name: "{{ user.username }}"
+    state: present
+    givenname: "{{ user.givenname }}"
+    sn: "{{ user.sn }}"
+    password: "{{ freeipa_temp_pass }}"
+    update_password: on_create
+    telephonenumber: "{{ user.tag }}"
+    ipa_host: "{{ freeipa_host }}"
+    ipa_user: "{{ freeipa_user }}"
+    ipa_pass: "{{ freeipa_password }}"
+
+- name: Add user to "cpt_users" group
+  community.general.ipa_group:
+    name: cpt_users
+    user:
+    - "{{ user.username }}"
+    append: true
+    state: present
+    ipa_host: "{{ freeipa_host }}"
+    ipa_user: "{{ freeipa_user }}"
+    ipa_pass: "{{ freeipa_password }}"
+
+- name: Add user to "openvpnusers" group
+  community.general.ipa_group:
+    name: openvpnusers
+    user:
+    - "{{ user.username }}"
+    append: true
+    state: present
+    ipa_host: "{{ freeipa_host }}"
+    ipa_user: "{{ freeipa_user }}"
+    ipa_pass: "{{ freeipa_password }}"
+
+- name: Create VM Folders
+  community.vmware.vcenter_folder:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: false
+    datacenter_name: 176th-CPT
+    folder_name: "{{ user.username }}"
+    folder_type: "vm"
+    parent_folder: "users" 
+    state: present
+
+- name: Assign domain user to VM folder
+  community.vmware.vmware_object_role_permission:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: false
+    principal: "{{ freeipa_host }}\\{{ user.username }}" ## --check for playbook fails here, most likely cause folder isn't actually created in step above so it can't find it
+    object_name: "{{ user.username }}"
+    state: present
+    role: "Virtual machine power user (sample)"
+
+- name: Loop over VM template pairs
+  include_tasks: tasks_for_each_user.yml
+  loop: "{{ vm_template_pairs }}"
+  loop_control:
+    loop_var: vm_pair
+
+- name: Build list of VM connections
+  set_fact:
+    vm_connection_list: "{{ vm_connection_list | default([]) + [user.username + vm_pair.vm_name] }}"
+  loop: "{{ vm_template_pairs }}"
+  loop_control:
+    loop_var: vm_pair
+
+- name: Assign user permissions to all connections
+  scicore.guacamole.guacamole_user:
+    base_url: "{{ guac_url }}"
+    auth_username: "{{ guac_username }}"
+    auth_password: "{{ guac_password }}"
+    username: "{{ user.username }}"
+    allowed_connections: "{{ vm_connection_list }}"
